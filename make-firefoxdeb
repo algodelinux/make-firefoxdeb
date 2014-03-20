@@ -1,0 +1,87 @@
+#!/bin/bash
+#
+# make-firefoxdeb: Genera un paquete Debian de Firefox para la arquitectura que le indiquemos.
+#
+# Este script:
+#    * Descarga el fichero .tar.bz2 de la última versión de Firefox disponible en http://ftp.mozilla.org
+#    * Crea el paquete Debian para la arquitectura que le indiquemos como parámetro
+#
+# Modo de uso:
+#    makefirefoxdeb i386 (para crear el paquete i386)
+#    makefirefoxdeb amd64 (para crear el paquete amd64)
+#
+# Observaciones: 
+#    * Ejecutar el script en un sistema de 32 bits para generar el paquete de 32 bits
+#    * Ejecutar el script en un sistema de 64 bits para generar el paquete de 64 bits
+#
+# Esteban M. Navas Martín <algodelinux@gmail.com>
+# IES Valle del Jerte - Plasencia
+# 20/03/2014
+
+
+# Debe estar instalado el paquete alien
+dpkg -l | grep ^"ii  alien" > /dev/null || echo "Es necesario instalar el paquete alien" || exit 1
+
+# Debe estar instalado el paquete fakeroot
+dpkg -l | grep ^"ii  fakeroot" > /dev/null || echo "Es necesario instalar el paquete fakeroot" || exit 1
+
+if [ $# -eq 0 ] || [ "$1" != "i386" ] && [ "$1" != "amd64" ]; then
+      echo "USO: $0 arquitectura"
+      echo "     Ejemplo: $0 i386  (para crear el paquete i386)"
+      echo "     Ejemplo: $0 amd64 (para crear el paquete amd64)"
+      exit
+fi
+
+arquitectura=$1
+
+# Establecemos la url del paquete a descargar
+if [ $arquitectura = "i386" ];
+then
+   url="http://ftp.mozilla.org/pub/mozilla.org/firefox/releases/latest/linux-i686/es-ES/"
+else
+   url="http://ftp.mozilla.org/pub/mozilla.org/firefox/releases/latest/linux-x86_64/es-ES/"
+fi
+
+echo "Descargando el paquete desde $url..."
+
+# Descargamos el paquete 
+wget -r -l1 -A .bz2 -t1 -nd -N -np $url
+
+directorio=$PWD
+nombrepaquete=`ls firefox-*.tar.bz2`
+
+echo "Paquete $nombrepaquete descargado."
+
+version=${nombrepaquete#firefox-}
+version=${version%.tar.bz2}
+
+nuevonombrepaquetebz2="firefox-$version-$arquitectura.tar.bz2"
+nuevonombrepaquetegz="firefox-$version-$arquitectura.tar.gz"
+nuevonombrepaquetedeb="firefox_$version-2_all.deb"
+nuevonombrepaquetefinaldeb="firefox_$version-2_$arquitectura.deb"
+
+echo "Creando paquete $nuevonombrepaquetefinaldeb..."
+
+mv $directorio/$nombrepaquete $directorio/$nuevonombrepaquetebz2
+
+bunzip2 -c < $directorio/$nuevonombrepaquetebz2 | gzip -c > $directorio/$nuevonombrepaquetegz
+
+fakeroot alien -dv $directorio/$nuevonombrepaquetegz
+
+dpkg-deb -x $directorio/$nuevonombrepaquetedeb firefox
+dpkg-deb --control $directorio/$nuevonombrepaquetedeb firefox/DEBIAN
+
+mkdir $directorio/firefox/opt
+mv $directorio/firefox/firefox firefox/opt
+
+sed -i "s/Architecture: all/Architecture: $arquitectura/g" $directorio/firefox/DEBIAN/control
+sed -i "s/Maintainer:.*/Maintainer: <algodelinux@gmail.com>/g" $directorio/firefox/DEBIAN/control
+
+dpkg-deb -b $directorio/firefox $directorio/$nuevonombrepaquetefinaldeb
+
+rm -r $directorio/firefox
+rm $directorio/$nuevonombrepaquetebz2
+rm $directorio/$nuevonombrepaquetegz
+rm $directorio/$nuevonombrepaquetedeb
+
+echo "Paquete $nuevonombrepaquetefinaldeb creado."
